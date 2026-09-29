@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schedule</title>
+<link rel="stylesheet" href="/static/css/main.css">
+
+<style>
+/* reports refinement */
+.reports-week-field{margin-bottom:14px;}
+.reports-week-list{max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:3px;margin-top:6px;background:var(--surface);}
+.reports-week-source{font-size:10px;color:var(--sub);margin-top:5px;}
+.reports-config-help{font-size:10px;color:var(--sub);margin:-2px 0 8px;}
+.reports-config-tab span{margin-left:4px;color:var(--sub);font-weight:600;}
+.reports-group-assignment{display:flex;flex-direction:column;gap:8px;overflow:hidden;border:0;padding:0;}
+.reports-assigned-block{border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:6px;}
+.reports-assignment-heading{display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:700;color:var(--sub);padding:3px 4px 6px;text-transform:none;}
+.reports-assignment-heading span{font-weight:600;}
+.reports-assigned-list{display:flex;flex-direction:column;gap:3px;max-height:125px;overflow:auto;}
+.reports-assigned-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 7px;border-radius:6px;background:var(--accent-bg);font-size:11px;}
+.reports-assigned-row button{border:0;background:transparent;color:var(--sub);font-size:16px;line-height:1;cursor:pointer;padding:0 2px;}
+.reports-assigned-row button:hover{color:var(--danger,#c33);}
+.reports-assignment-empty{padding:7px;color:var(--sub);font-size:11px;}
+.available-heading{padding-top:0;margin-top:1px;}
+.reports-available-list{flex:1;min-height:100px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:4px;background:var(--surface);}
+.reports-group-row{margin:1px 0;}
+</style>
+</head>
+<body>
+
+<div id="tokenGate">
+  <div class="box">
+    <h2 style="margin-top:0;font-size:15px;">Вставь токен</h2>
+    <p class="note" style="margin-top:0;">DevTools → Network → любой запрос → заголовок Authorization: Bearer &lt;это значение&gt;</p>
+    <textarea id="tokenInput" placeholder="токен без слова Bearer"></textarea>
+    <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+      <button class="primary" id="tokenSave">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="topbar-main">
+    <div class="brand"><span>Schedule</span></div>
+    <div class="toolbar-actions">
+      <div class="mode-switch" id="modeSwitch" role="group" aria-label="Режим просмотра">
+        <button type="button" class="mode-btn active" data-mode="edit">Редактор</button>
+        <button type="button" class="mode-btn" data-mode="view">Просмотр</button>
+      </div>
+      <button id="btnReports">Отчёты</button>
+      <button id="btnPublishAll" class="primary">Опубликовать все</button>
+      <button id="changeTokenBtn" class="icon-btn" title="Сменить токен">⚙</button>
+    </div>
+  </div>
+  <div id="clipBanner" class="clip-banner" style="display:none">
+    <span></span><button class="small" id="clipCancel">Отмена</button>
+  </div>
+</header>
+
+<div class="app-body">
+  <aside class="side-panel groups-panel">
+    <div class="panel-heading">
+      <div>Группы</div>
+      <span class="panel-count" id="groupCount"></span>
+    </div>
+    <div class="group-controls">
+      <div class="combo group-course-combo">
+        <input class="select-search" id="categorySearch" autocomplete="off" placeholder="Все курсы">
+        <div class="combo-list" id="categoryList"></div>
+      </div>
+      <select id="categorySelect" hidden></select>
+      <input type="text" id="groupSearch" placeholder="Поиск группы…">
+    </div>
+    <div id="groupList" class="group-list"></div>
+  </aside>
+
+  <main class="schedule-main">
+    <div class="schedule-head">
+      <div>
+        <div class="schedule-title" id="scheduleTitle">Расписание</div>
+        <div class="schedule-hint" id="scheduleHint">Клик — редактирование · Ctrl+click — несколько · Shift+click — диапазон · Delete — удалить</div>
+      </div>
+      <div class="schedule-context-actions" id="editorScheduleActions">
+        <div class="schedule-toolbar-row">
+          <div class="schedule-current-context">
+            <div class="schedule-context-label">Текущее расписание</div>
+            <button id="btnChooseShift" class="current-group current-shift-picker" title="Выбрать смену">Группа не выбрана</button>
+          </div>
+          <div class="schedule-primary-actions">
+            <button id="reloadBtn" class="schedule-reload icon-btn" title="Обновить расписание" aria-label="Обновить расписание">↻</button>
+            <button id="btnPublish" class="primary">Опубликовать</button>
+          </div>
+        </div>
+        <div class="selection-actions schedule-edit-actions">
+          <span id="selectionCount" class="selection-count"></span>
+          <button id="btnUndo" class="selection-action" disabled title="Отменить последнее изменение">↩ Отменить</button>
+          <button id="btnCopyWeek" class="selection-action" title="Скопировать текущую неделю в другую группу">Копировать неделю</button>
+          <button id="btnDeleteSelected" class="danger" disabled>Удалить выбранные</button>
+        </div>
+      </div>
+    </div>
+    <div class="view-status" id="viewStatus" hidden></div>
+    <div class="days-board" id="daysBoard"></div>
+  </main>
+
+  <aside class="side-panel resources-panel">
+    <div id="editorResources">
+    <section class="resource-section templates-section">
+      <div class="panel-heading"><div>Шаблоны</div><span class="panel-count" id="templateCount"></span></div>
+      <input type="text" class="search" id="templateSearch" placeholder="Поиск шаблона…">
+      <div class="chip-list" id="templateTray"></div>
+      <button class="add-tpl-btn" id="addTplBtn">+ добавить шаблон</button>
+    </section>
+    <section class="resource-section">
+      <div class="panel-heading"><div>Предметы</div><span class="panel-count" id="subjectCount"></span></div>
+      <input type="text" class="search" id="subjectSearch" placeholder="Поиск предмета…">
+      <div class="chip-list" id="subjectTray"></div>
+    </section>
+    </div>
+    <section class="resource-section view-resources" id="viewResources" hidden>
+      <div class="panel-heading"><div>Недели</div><span class="panel-count" id="viewWeekCount"></span></div>
+      <input type="text" class="search" id="viewWeekSearch" placeholder="Поиск недели или даты…" autocomplete="off">
+      <div class="week-list view-week-list" id="viewWeekList"></div>
+      <div class="view-week-note" id="viewWeekNote">Выбери опубликованную неделю для просмотра.</div>
+    </section>
+  </aside>
+</div>
+
+
+<div class="overlay" id="overlay"></div>
+<aside class="panel lesson-panel" id="panel">
+  <button class="close-x" id="panelClose">✕</button>
+  <div class="panel-head">
+    <div>
+      <div class="panel-kicker">Редактирование</div>
+      <h2 id="panelTitle">Урок</h2>
+    </div>
+  </div>
+
+  <div class="lesson-fields">
+    <div class="field compact-field"><label>Время</label><input type="text" id="fBell" placeholder="08:00-09:20"></div>
+    <div class="field searchable-field compact-field"><label>Предмет</label><div class="combo"><input class="select-search" id="fSubjectSearch" autocomplete="off" placeholder="Поиск предмета…"><div class="combo-list" id="fSubjectList"></div></div><select id="fSubject" hidden></select></div>
+    <div class="field searchable-field compact-field"><label>Преподаватель</label><div class="combo"><input class="select-search" id="fStaffSearch" autocomplete="off" placeholder="Поиск преподавателя…"><div class="combo-list" id="fStaffList"></div></div><select id="fStaff" hidden></select></div>
+    <div class="field searchable-field compact-field"><label>Кабинет <span class="optional">необязательно</span></label><div class="combo"><input class="select-search" id="fRoomSearch" autocomplete="off" placeholder="Поиск кабинета…"><div class="combo-list" id="fRoomList"></div></div><select id="fRoom" hidden><option value="">— без кабинета —</option></select></div>
+  </div>
+
+  <div class="panel-primary-action">
+    <button class="primary" id="fSave">Сохранить</button>
+  </div>
+  <div class="panel-secondary-actions">
+    <button id="fCopy">Копировать</button>
+    <button id="fMakeTpl">Сделать шаблоном</button>
+  </div>
+  <div class="panel-danger-zone">
+    <div class="panel-danger-label">Опасная зона</div>
+    <button class="danger" id="fDelete">Удалить урок</button>
+  </div>
+</aside>
+
+<aside class="panel lesson-panel utility-panel" id="shiftPanel">
+  <button class="close-x" id="shiftClose">✕</button>
+  <div class="panel-head">
+    <div>
+      <div class="panel-kicker">Текущее расписание</div>
+      <h2>Выбрать смену</h2>
+    </div>
+  </div>
+  <div class="field">
+    <label id="shiftPanelGroupLabel">Группа</label>
+    <div class="week-list shift-picker-list" id="shiftList"></div>
+  </div>
+</aside>
+
+<aside class="panel lesson-panel utility-panel" id="weekPanel">
+  <button class="close-x" id="weekClose">✕</button>
+  <div class="panel-head">
+    <div>
+      <div class="panel-kicker">Публикация</div>
+      <h2>Опубликовать расписание</h2>
+    </div>
+  </div>
+  <div class="field week-panel-field">
+    <label>Неделя для публикации</label>
+    <input class="select-search" id="weekSearch" autocomplete="off" placeholder="Поиск по номеру или дате…">
+    <div class="week-list" id="weekList"></div>
+    <select id="weekSelect" hidden></select>
+  </div>
+  <div class="panel-primary-action"><button class="primary" id="weekPublishGo">Отправить</button></div>
+</aside>
+
+<aside class="panel lesson-panel utility-panel" id="copyPanel">
+  <button class="close-x" id="copyClose">✕</button>
+  <div class="panel-head">
+    <div>
+      <div class="panel-kicker">Копирование</div>
+      <h2>Копировать неделю</h2>
+    </div>
+  </div>
+  <p class="note">Выбери группу-получателя. Текущая неделя будет записана поверх её расписания.</p>
+  <div class="field searchable-field compact-field">
+    <label>Группа-получатель</label>
+    <div class="combo">
+      <input class="select-search" id="copyTargetSearch" autocomplete="off" placeholder="Поиск группы…">
+      <div class="combo-list" id="copyTargetList"></div>
+    </div>
+    <select id="copyTarget" hidden></select>
+  </div>
+  <div class="panel-primary-action"><button class="primary" id="copyGo">Скопировать неделю</button></div>
+</aside>
+
+<aside class="panel lesson-panel utility-panel reports-panel" id="reportsPanel">
+  <button class="close-x" id="reportsClose">✕</button>
+  <div class="panel-head">
+    <div>
+      <div class="panel-kicker">Документы</div>
+      <h2>Отчёты</h2>
+    </div>
+  </div>
+
+  <div class="reports-context" id="reportsContext"></div>
+
+  <div class="field reports-week-field">
+    <label>Неделя</label>
+    <input class="select-search" id="reportsWeekSearch" autocomplete="off" placeholder="Поиск по номеру или дате…">
+    <div class="week-list reports-week-list" id="reportsWeekList"></div>
+    <select id="reportsWeekSelect" hidden></select>
+    <div class="reports-week-source" id="reportsWeekSource"></div>
+  </div>
+
+  <div class="field">
+    <label>Учебный год</label>
+    <div class="reports-year">
+      <input id="reportsYearFrom" inputmode="numeric" maxlength="4" placeholder="2025">
+      <span>—</span>
+      <input id="reportsYearTo" inputmode="numeric" maxlength="4" placeholder="2026">
+    </div>
+  </div>
+
+  <div class="field reports-saturday-field">
+    <label class="check-row"><input type="checkbox" id="reportsSaturday"> <span>Учебная суббота</span></label>
+  </div>
+
+  <section class="reports-section">
+    <div class="panel-heading"><div>Группы в отчётах</div></div>
+    <div class="reports-type-list" id="reportsTypeList"></div>
+  </section>
+
+  <div class="panel-primary-action">
+    <button id="reportsConfigure" class="reports-secondary-action">Настроить группы</button>
+    <button id="reportsGenerate" class="primary">Сформировать выбранные</button>
+  </div>
+
+  <div class="reports-result" id="reportsResult" hidden></div>
+</aside>
+
+<aside class="panel lesson-panel utility-panel" id="tplPanel">
+  <button class="close-x" id="tplClose">✕</button>
+  <div class="panel-head">
+    <div>
+      <div class="panel-kicker">Шаблоны</div>
+      <h2>Новый шаблон</h2>
+    </div>
+  </div>
+  <div class="field searchable-field compact-field"><label>Тип</label>
+    <div class="combo">
+      <input class="select-search" id="tKindSearch" autocomplete="off" placeholder="Поиск типа…">
+      <div class="combo-list" id="tKindList"></div>
+    </div>
+    <select id="tKind" hidden>
+      <option value="combo">Предмет + препод + кабинет</option>
+      <option value="time">Только время (звонок)</option>
+    </select>
+  </div>
+  <div class="field searchable-field compact-field"><label>Область действия</label>
+    <div class="combo">
+      <input class="select-search" id="tScopeSearch" autocomplete="off" placeholder="Поиск области…">
+      <div class="combo-list" id="tScopeList"></div>
+    </div>
+    <select id="tScope" hidden></select>
+  </div>
+  <div class="field"><label>Название</label><input type="text" id="tLabel" placeholder="ДПМ · 1 курс"></div>
+
+  <div id="tComboFields">
+    <div class="field searchable-field compact-field"><label>Предмет</label><div class="combo"><input class="select-search" id="tSubjectSearch" autocomplete="off" placeholder="Поиск предмета…"><div class="combo-list" id="tSubjectList"></div></div><select id="tSubject" hidden></select></div>
+    <div class="field searchable-field compact-field"><label>Преподаватель</label><div class="combo"><input class="select-search" id="tStaffSearch" autocomplete="off" placeholder="Поиск преподавателя…"><div class="combo-list" id="tStaffList"></div></div><select id="tStaff" hidden></select></div>
+    <div class="field searchable-field compact-field"><label>Кабинет</label><div class="combo"><input class="select-search" id="tRoomSearch" autocomplete="off" placeholder="Поиск кабинета…"><div class="combo-list" id="tRoomList"></div></div><select id="tRoom" hidden><option value="">— без кабинета —</option></select></div>
+  </div>
+  <div id="tTimeFields" style="display:none;">
+    <div class="field"><label>Время (звонок)</label><input type="text" id="tBell" placeholder="08:00-09:20"></div>
+  </div>
+
+  <div class="panel-actions"><button class="primary" id="tSave">Добавить шаблон</button></div>
+</aside>
+
+<div class="publish-all-backdrop" id="publishAllBackdrop"></div>
+<aside class="publish-all-panel" id="publishAllPanel" aria-modal="true" role="dialog" aria-labelledby="publishAllTitle">
+  <button class="close-x" id="publishAllClose" aria-label="Закрыть">✕</button>
+  <div class="publish-result-head">
+    <div class="panel-kicker">Публикация</div>
+    <h2 id="publishAllTitle">Опубликовать все группы</h2>
+  </div>
+  <div class="publish-all-context" id="publishAllContext"></div>
+  <div class="field publish-all-week-field">
+    <label>Неделя для публикации</label>
+    <input class="select-search" id="publishAllWeekSearch" autocomplete="off" placeholder="Поиск по номеру или дате…">
+    <div class="week-list publish-all-week-list" id="publishAllWeekList"></div>
+  </div>
+  <div class="publish-all-stats" id="publishAllStats"></div>
+  <div class="publish-all-note">Для каждой группы берётся её основная смена. Группы без указанной основной смены будут пропущены.</div>
+  <div class="publish-result-actions">
+    <button id="publishAllCancel">Отмена</button>
+    <button class="primary" id="publishAllGo">Опубликовать все</button>
+  </div>
+</aside>
+
+<div class="publish-result-backdrop" id="publishResultBackdrop"></div>
+<aside class="publish-result" id="publishResult" aria-modal="true" role="dialog" aria-labelledby="publishResultTitle">
+  <button class="close-x" id="publishResultClose" aria-label="Закрыть">✕</button>
+  <div class="publish-result-head">
+    <div class="panel-kicker">Результат</div>
+    <h2 id="publishResultTitle">Публикация завершена</h2>
+  </div>
+  <div class="publish-summary" id="publishSummary"></div>
+  <div class="publish-result-list" id="publishResultList"></div>
+  <div class="publish-result-actions">
+    <button class="primary" id="publishResultCloseBtn">Закрыть</button>
+  </div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script src="/static/js/core.js"></script>
+<script src="/static/js/token.js"></script>
+<script src="/static/js/groups.js"></script>
+<script src="/static/js/reference.js"></script>
+<script src="/static/js/schedule.js"></script>
+<script src="/static/js/history.js"></script>
+<script src="/static/js/clipboard.js"></script>
+<script src="/static/js/editor.js"></script>
+<script src="/static/js/subjects.js"></script>
+<script src="/static/js/templates.js"></script>
+<script src="/static/js/publish.js"></script>
+<script src="/static/js/view.js"></script>
+<script src="/static/js/reports.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
