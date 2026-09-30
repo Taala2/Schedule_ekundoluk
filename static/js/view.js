@@ -146,8 +146,15 @@ function normalizePublishedSchedule(schedule){
 
 function normalizedText(v){return String(v||"").trim().replace(/\s+/g," ").toLowerCase();}
 function staffNamesEquivalent(a,b){
-  const aa=normalizedText(a).split(" ").filter(Boolean);
-  const bb=normalizedText(b).split(" ").filter(Boolean);
+  // «Иван Н.К.» и «Иван Н. К.» — одно и то же имя.
+  // Для сравнения убираем точки у инициалов, не меняя отображаемый текст.
+  const normalizeStaff = v => String(v||"")
+    .toLowerCase()
+    .replace(/\./g," ")
+    .replace(/\s+/g," ")
+    .trim();
+  const aa=normalizeStaff(a).split(" ").filter(Boolean);
+  const bb=normalizeStaff(b).split(" ").filter(Boolean);
   if(!aa.length || !bb.length) return aa.length===bb.length;
   // Сначала сравниваем токены с учётом инициалов: «Усупов Эгемберди Айылевич»
   // и «Усупов Э. А.» должны считаться одним преподавателем.
